@@ -1,0 +1,126 @@
+---
+title: "Oct 3rd, 2022"
+output: pdf_document
+date: '2022-10-03'
+---
+
+# Estimation on each time point (m = 1)
+
+```{r, message=FALSE}
+require(mixtools)
+require(Matrix)
+require(splines)
+require(gridExtra)
+library(dplyr)
+library(scales)
+require(grid)
+source("MDSP(modified).R")
+source("oracle.R")
+
+### 
+# n : number of identitties
+# m : time length
+# p.x : dimension of hetergeneous variates
+# p.z : dimension of homogeneous variates
+# k : number of centers
+n=200
+m=1
+p.x=1
+p.z=3
+k = 2
+
+
+set.seed(2022)
+# Generate Gamma and Beta
+t = seq(1,m)
+gamma = matrix(0, ncol = k, nrow = m, byrow = FALSE) 
+#c <- 1; a <- 0.5
+gamma[,1] <- 0#c *(1/t - a)^2 + 2
+gamma[,2] <- 1#0.5 *(1/t - 1)^2
+
+#ymax <- max((c *(1-a)^2 + b)/d, (c *(50-a)^2 + b)/d) + 10
+
+id_center = c(rep(1, n/2), rep(2, n/2))
+beta = matrix(NA, nrow = p.x, ncol = n * m)
+
+for (i in 1:n) {
+  
+  temp =  i + seq( 0, m-1 ) * n
+  beta[,temp] = matrix( gamma[,id_center[i]], ncol = m,nrow = p.x, byrow = TRUE)
+  
+}
+
+#plot(1:n, beta)
+
+#beta <- as.vector(beta)
+id <- id_center#unique(sample(which(id_center == 1),n * 0.1))
+
+### Generate Data
+X=matrix(rnorm(n*m*p.x), n*m,p.x)
+Z=cbind(1, matrix(rnorm(n*m*(p.z-1)),n*m,(p.z-1)))
+Y=matrix(NA,nrow =  n * m , ncol = 1)
+
+for (i in 1:(n*m)) {
+  
+  Y[i,] <- X[i,] %*% beta[,i] + rnorm(1, sd = 0.2)
+  
+}
+
+
+
+```
+
+
+
+The estimation accuracy is based on $\lambda/\kappa$, not $\lambda itself$, where $\lambda$ is the paramter for L1 penalty and $\kappa$ is the parameter for the augmented L2 penalty. This statement is from the estimation for $\nu$.
+
+$$
+min_{\nu_{ijk}} \quad \frac{1}{2} \| \beta_{ijk}^{(l+1)} - \nu_{ijk} +{\kappa}^{-1}  \|^2 
+$$
+
+
+
+
+## Acuuracy
+
+Here I would like to explore the parameter tuning effect of $\lambda$ and $\kappa$. In this case, the iteration still has the fixed iteration step.
+
+```{r}
+fit_alg <- MDSP_temporal(Y,X,Z,m=m, l1=1000,kp=1,beta.int  = beta +0.5,
+                         id = id, beta.true = beta, label = id_center)
+
+plot(1:n, fit_alg$beta.int, ylim = c(-5,250), col = "blue")
+lines(1:n,fit_alg$nu_track[30,], type = "p", col = "red")
+lines(1:n,beta, type = "p", col = "green")
+
+```
+
+
+```{r}
+fit_alg <- MDSP_temporal(Y,X,Z,m=m, l1=0.5,kp=1,beta.int  = beta +0.5,
+                         id = id, beta.true = beta, label = id_center)
+
+plot(1:n, fit_alg$beta.int, ylim = c(-1,3), col = "blue")
+lines(1:n,fit_alg$beta_track[3,], type = "p", col = "red")
+lines(1:n,beta, type = "p", col = "green")
+
+```
+
+```{r}
+fit_alg <- MDSP_temporal(Y,X,Z,m=m, l1=0.1,kp=1,beta.int  = beta +0.5,
+                         id = id, beta.true = beta, label = id_center)
+
+plot(1:n, fit_alg$beta.int, ylim = c(-1,3), col = "blue")
+lines(1:n,fit_alg$nu_track[5,], type = "p", col = "red")
+lines(1:n,fit_alg$beta_track[5,], type = "p", col = "black")
+lines(1:n,beta, type = "p", col = "green")
+
+```
+
+
+I modify the ADMM algorithm based on our previous discussed idea of changing step, where the $\kappa$ is modified during the iteration.
+
+## Running Time
+
+
+# Over time points (m > 1)
